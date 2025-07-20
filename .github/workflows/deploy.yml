@@ -1,0 +1,40 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main  # Change to your deployment branch if different
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Copy project files to EC2
+        run: |
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          rsync -avz --exclude=node_modules --exclude=.git ./ ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USERNAME }}/pos-frontend
+
+      - name: SSH into EC2 and deploy
+        run: |
+          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
+            cd pos-frontend
+
+            # Stop old container if exists
+            docker stop pos-frontend || true
+            docker rm pos-frontend || true
+
+            # Build docker image
+            docker build -t pos-frontend .
+
+            # Run container with port mapping
+            docker run -d --name pos-frontend -p 5173:5173 pos-frontend
+          EOF
