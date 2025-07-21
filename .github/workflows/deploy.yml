@@ -20,12 +20,23 @@ jobs:
 
       - name: Copy project files to EC2
         run: |
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-          rsync -avz --exclude=node_modules --exclude=.git ./ ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USERNAME }}/pos-frontend
+          # Add the new IP to known_hosts to avoid authenticity prompt
+          ssh-keyscan -H 13.203.198.46 >> ~/.ssh/known_hosts
+
+          # Sync project files to EC2
+          rsync -avz --exclude=node_modules --exclude=.git ./ ubuntu@13.203.198.46:/home/ubuntu/pos-frontend
 
       - name: SSH into EC2 and deploy
         run: |
-          ssh ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh ubuntu@13.203.198.46 << 'EOF'
             cd pos-frontend
 
-            # Stop and remove any container using port 517
+            # Stop and remove any container using port 5173 (example command below)
+            # Adjust according to your deployment script
+            docker ps --filter "publish=5173" --format "{{.ID}}" | xargs -r docker stop
+            docker ps -a --filter "publish=5173" --format "{{.ID}}" | xargs -r docker rm
+
+            # Build and run your container again or run your deployment commands here
+            docker build -t pos-frontend .
+            docker run -d -p 5173:5173 pos-frontend
+          EOF
