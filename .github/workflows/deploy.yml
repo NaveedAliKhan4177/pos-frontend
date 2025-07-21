@@ -1,0 +1,44 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - test  # or master or your deployment branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Copy .env file to EC2
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > .env
+          scp -o StrictHostKeyChecking=no .env ubuntu@43.204.216.117:/home/ubuntu/pos-frontend/.env
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@43.204.216.117 << 'EOF'
+            cd ~/pos-frontend
+
+            # Pull latest code
+            git pull origin main
+
+            # Build Docker image
+            docker build -t pos-frontend .
+
+            # Stop and remove existing container
+            docker stop pos-frontend || true
+            docker rm pos-frontend || true
+
+            # Run new container
+            docker run -d --name pos-frontend -p 5173:5173 pos-frontend
+
+          EOF
