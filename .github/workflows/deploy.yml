@@ -1,9 +1,9 @@
-name: Deploy to EC2
+name: Deploy Frontend and Backend to EC2
 
 on:
   push:
     branches:
-      - main  # Change to your deployment branch if different
+      - main
 
 jobs:
   deploy:
@@ -20,23 +20,30 @@ jobs:
 
       - name: Copy project files to EC2
         run: |
-          # Add the new IP to known_hosts to avoid authenticity prompt
           ssh-keyscan -H 13.203.198.46 >> ~/.ssh/known_hosts
 
-          # Sync project files to EC2
-          rsync -avz --exclude=node_modules --exclude=.git ./ ubuntu@13.203.198.46:/home/ubuntu/pos-frontend
+          # Copy frontend
+          rsync -avz --exclude=node_modules --exclude=.git ./frontend ubuntu@13.203.198.46:/home/ubuntu/pos-frontend
 
-      - name: SSH into EC2 and deploy
+          # Copy backend
+          rsync -avz --exclude=node_modules --exclude=.git ./backend ubuntu@13.203.198.46:/home/ubuntu/pos-backend
+
+      - name: SSH into EC2 and deploy both apps
         run: |
           ssh ubuntu@13.203.198.46 << 'EOF'
+            # FRONTEND DEPLOYMENT
             cd pos-frontend
-
-            # Stop and remove any container using port 5173 (example command below)
-            # Adjust according to your deployment script
-            docker ps --filter "publish=5173" --format "{{.ID}}" | xargs -r docker stop
-            docker ps -a --filter "publish=5173" --format "{{.ID}}" | xargs -r docker rm
-
-            # Build and run your container again or run your deployment commands here
+            docker stop pos-frontend-container || true
+            docker rm pos-frontend-container || true
+            docker rmi pos-frontend || true
             docker build -t pos-frontend .
-            docker run -d -p 5173:5173 pos-frontend
+            docker run -d -p 5173:5173 --name pos-frontend-container pos-frontend
+
+            # BACKEND DEPLOYMENT
+            cd ../pos-backend
+            docker stop pos-backend-container || true
+            docker rm pos-backend-container || true
+            docker rmi pos-backend || true
+            docker build -t pos-backend .
+            docker run -d -p 8000:8000 --name pos-backend-container pos-backend
           EOF
