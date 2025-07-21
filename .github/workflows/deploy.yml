@@ -18,20 +18,38 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
+      - name: Confirm folder structure
+        run: |
+          echo "Listing project directories for debugging"
+          ls -la
+          ls -la frontend || echo "No frontend folder found"
+          ls -la backend || echo "No backend folder found"
+
       - name: Copy project files to EC2
         run: |
           ssh-keyscan -H 13.203.198.46 >> ~/.ssh/known_hosts
 
           # Copy frontend
-          rsync -avz --exclude=node_modules --exclude=.git ./frontend ubuntu@13.203.198.46:/home/ubuntu/pos-frontend
+          if [ -d "./frontend" ]; then
+            rsync -avz --exclude=node_modules --exclude=.git ./frontend/ ubuntu@13.203.198.46:/home/ubuntu/pos-frontend
+          else
+            rsync -avz --exclude=node_modules --exclude=.git ./ ubuntu@13.203.198.46:/home/ubuntu/pos-frontend
+          fi
 
           # Copy backend
-          rsync -avz --exclude=node_modules --exclude=.git ./backend ubuntu@13.203.198.46:/home/ubuntu/pos-backend
+          if [ -d "./backend" ]; then
+            rsync -avz --exclude=node_modules --exclude=.git ./backend/ ubuntu@13.203.198.46:/home/ubuntu/pos-backend
+          else
+            echo "Backend folder not found, skipping backend deployment copy."
+          fi
 
       - name: SSH into EC2 and deploy both apps
         run: |
           ssh ubuntu@13.203.198.46 << 'EOF'
-            # FRONTEND DEPLOYMENT
+            set -e
+
+            echo "Starting FRONTEND deployment..."
+
             cd pos-frontend
             docker stop pos-frontend-container || true
             docker rm pos-frontend-container || true
@@ -39,11 +57,16 @@ jobs:
             docker build -t pos-frontend .
             docker run -d -p 5173:5173 --name pos-frontend-container pos-frontend
 
-            # BACKEND DEPLOYMENT
+            echo "Frontend deployed successfully."
+
+            echo "Starting BACKEND deployment..."
+
             cd ../pos-backend
             docker stop pos-backend-container || true
             docker rm pos-backend-container || true
             docker rmi pos-backend || true
             docker build -t pos-backend .
             docker run -d -p 8000:8000 --name pos-backend-container pos-backend
+
+            echo "Backend deployed successfully."
           EOF
